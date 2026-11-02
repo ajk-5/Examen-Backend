@@ -3,9 +3,11 @@ import { pool } from "../db";
 import { Booking } from "../domain/booking";
 import {
   BookingRepository,
+  CancelBookingResult,
   CreateBookingResult,
   NewBooking,
 } from "./bookingRepository";
+import { CancellationStatus } from "../domain/booking";
 
 export class PostgresBookingRepository implements BookingRepository {
   async findById(id: string): Promise<Booking | null> {
@@ -25,6 +27,26 @@ export class PostgresBookingRepository implements BookingRepository {
     );
 
     return result.rows[0] ?? null;
+  }
+
+  async findByMember(memberId: string): Promise<Booking[]> {
+    const result = await pool.query<Booking>(
+      `
+        SELECT
+          id,
+          room_id AS "roomId",
+          member_id AS "memberId",
+          start_at AS "start",
+          end_at AS "end",
+          status
+        FROM bookings
+        WHERE member_id = $1
+        ORDER BY start_at
+      `,
+      [memberId],
+    );
+
+    return result.rows;
   }
 
   async findByRoomAndPeriod(roomId: string, from: Date, to: Date): Promise<Booking[]> {
@@ -128,6 +150,69 @@ export class PostgresBookingRepository implements BookingRepository {
         return { type: "room_overlap" };
       }
 
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async cancel(
+    id: string,
+    getStatus: (start: Date) => CancellationStatus,
+  ): Promise<CancelBookingResult> {
+    const client = await pool.connect();
+
+    try {
+      await client.query("BEGIN");
+
+      const result = await client.query<Booking>(
+        `
+          SELECT
+            id,
+            room_id AS "roomId",
+            member_id AS "memberId",
+            start_at AS "start",
+            end_at AS "end",
+            status
+          FROM bookings
+          WHERE id = $1
+          FOR UPDATE
+        `,
+        [id],
+      );
+      const booking = result.rows[0];
+
+      if (!booking) {
+        await client.query("ROLLBACK");
+        return { type: "not_found" };
+      }
+
+      if (booking.status !== "confirmed") {
+        await client.query("ROLLBACK");
+        return { type: "already_cancelled" };
+      }
+
+      const status = getStatus(booking.start);
+      const updateResult = await client.query<Booking>(
+        `
+          UPDATE bookings
+          SET status = $2
+          WHERE id = $1
+          RETURNING
+            id,
+            room_id AS "roomId",
+            member_id AS "memberId",
+            start_at AS "start",
+            end_at AS "end",
+            status
+        `,
+        [id, status],
+      );
+
+      await client.query("COMMIT");
+      return { type: "cancelled", booking: updateResult.rows[0]! };
+    } catch (error) {
+      await client.query("ROLLBACK");
       throw error;
     } finally {
       client.release();

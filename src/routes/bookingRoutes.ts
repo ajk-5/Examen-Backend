@@ -5,6 +5,7 @@ export function createBookingRouter(bookingController: BookingController): Route
   const router = Router();
 
   router.get("/:id", bookingController.getBooking);
+  router.delete("/:id", bookingController.cancelBooking);
 
   return router;
 }

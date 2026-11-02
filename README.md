@@ -21,6 +21,7 @@ docker compose up -d --wait
 Apply the migration:
 ```powershell
 Get-Content -Raw migrations/001_initial.sql | docker compose exec -T postgres psql -U studio -d studio_riff -v ON_ERROR_STOP=1
+Get-Content -Raw migrations/002_booking_schedule_index.sql | docker compose exec -T postgres psql -U studio -d studio_riff -v ON_ERROR_STOP=1
 ```
 
 Insert the starting data:

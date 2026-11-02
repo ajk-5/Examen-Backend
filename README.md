@@ -41,5 +41,6 @@ The implemented route is:
 ```text
 GET /rooms
 GET /rooms/:id/bookings?from=...&to=...
+POST /rooms/:id/bookings
 ```
 

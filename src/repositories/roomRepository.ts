@@ -2,5 +2,5 @@ import { Room } from "../domain/room";
 
 export interface RoomRepository {
   findAll(): Promise<Room[]>;
-  exists(id: string): Promise<boolean>;
+  findById(id: string): Promise<Room | null>;
 }

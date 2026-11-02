@@ -1,4 +1,5 @@
 import express from "express";
+import { ValkeyScheduleCache } from "./cache/valkeyScheduleCache";
 import { BookingController } from "./controllers/bookingController";
 import { MemberController } from "./controllers/memberController";
 import { RoomController } from "./controllers/roomController";
@@ -22,8 +23,14 @@ const roomRepository = new PostgresRoomRepository();
 const bookingRepository = new PostgresBookingRepository();
 const memberRepository = new PostgresMemberRepository();
 const clock = new SystemClock();
+const scheduleCache = new ValkeyScheduleCache(process.env.VALKEY_URL, 60);
 const roomService = new RoomService(roomRepository);
-const bookingService = new BookingService(roomRepository, bookingRepository, clock);
+const bookingService = new BookingService(
+  roomRepository,
+  bookingRepository,
+  clock,
+  scheduleCache,
+);
 const memberService = new MemberService(memberRepository, bookingRepository);
 const roomController = new RoomController(roomService, bookingService);
 const bookingController = new BookingController(bookingService);

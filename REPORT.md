@@ -68,3 +68,24 @@ Creating or cancelling a booking increments the room version. The next request t
 If Valkey is unavailable, cache reads return a miss and the API continues with PostgreSQL.
 
 Bookings could technically be stored as JSON in Valkey, but this would not fit this project. The association is small, and bookings need durable storage, relational checks, transactions, and backup. Valkey is more useful here for temporary derived data.
+
+## Backup and restore
+
+I created a custom-format PostgreSQL backup with `backup.sh` and restored it into a new database named `studio_riff_restore` with `restore.sh`.
+
+The row counts after restoration were:
+
+| Database | Rooms | Members | Bookings |
+| --- | ---: | ---: | ---: |
+| `studio_riff` | 4 | 3 | 4 |
+| `studio_riff_restore` | 4 | 3 | 4 |
+
+The matching counts prove that the starting data was restored in the new database.
+
+### Recovery objectives
+
+- **RPO: 24 hours.** One daily backup is acceptable for a small music association. In the worst case, the team may need to re-enter one day of bookings from messages or emails.
+- **RTO: 2 hours.** The database is small, and the tested restore takes only a few seconds. Two hours leaves time to replace a machine, start Docker, restore the backup, and check the API.
+- **Retention: 30 daily backups.** This gives one month to notice an error while keeping storage and maintenance simple.
+
+These values are less strict than a bank because Studio Riff has few rooms and members, and a short manual recovery is possible.

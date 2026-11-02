@@ -44,5 +44,6 @@ GET /rooms/:id/bookings?from=...&to=...
 POST /rooms/:id/bookings
 GET /bookings/:id
 DELETE /bookings/:id
+GET /members/:id/bookings
 ```
 

@@ -38,6 +38,8 @@ npm run build
 npm start
 ```
 
+The API runs at `http://localhost:3000`.
+
 ## Cache
 
 Room schedules are cached in Valkey for 60 seconds. Creating or cancelling a booking invalidates the room cache immediately. If Valkey is unavailable, the API reads from PostgreSQL.
@@ -49,6 +51,8 @@ Run the tests with:
 ```powershell
 npm test
 ```
+
+The tests reset the database to the starting data.
 
 ## Backup and restore
 
@@ -64,7 +68,7 @@ Restore it into a separate database:
 bash restore.sh backups/studio_riff.dump studio_riff_restore
 ```
 
-The implemented route is:
+The implemented routes are:
 ```text
 GET /rooms
 GET /rooms/:id/bookings?from=...&to=...
@@ -72,5 +76,11 @@ POST /rooms/:id/bookings
 GET /bookings/:id
 DELETE /bookings/:id
 GET /members/:id/bookings
+```
+
+Stop the containers with:
+
+```powershell
+docker compose down
 ```
 

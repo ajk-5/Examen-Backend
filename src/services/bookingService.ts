@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { Booking } from "../domain/booking";
 import {
+  BookingConflictError,
   checkMaintenance,
   checkMemberLimit,
   checkRoomAvailability,
@@ -8,6 +9,7 @@ import {
   validateBookingTime,
 } from "../domain/bookingRules";
 import { Clock } from "../domain/clock";
+import { getCancellationStatus } from "../domain/cancellationRules";
 import { NotFoundError, ValidationError } from "../errorHandler";
 import { BookingRepository } from "../repositories/bookingRepository";
 import { RoomRepository } from "../repositories/roomRepository";
@@ -27,6 +29,21 @@ export class BookingService {
     }
 
     return booking;
+  }
+
+  async cancelBooking(id: string): Promise<void> {
+    const now = this.clock.now();
+    const result = await this.bookingRepository.cancel(id, (start) =>
+      getCancellationStatus(start, now),
+    );
+
+    if (result.type === "not_found") {
+      throw new NotFoundError("Booking not found");
+    }
+
+    if (result.type === "already_cancelled") {
+      throw new BookingConflictError("The booking is already cancelled");
+    }
   }
 
   async getRoomBookings(roomId: string, from: Date, to: Date): Promise<Booking[]> {

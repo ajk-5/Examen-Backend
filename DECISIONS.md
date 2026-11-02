@@ -1,32 +1,40 @@
-﻿# Design decisions
+# Design decisions
 
-## Project structure
+## Architecture
 
 ```text
-HTTP routes -> Domain functions -> Database queries -> PostgreSQL
+Routes -> Controllers -> Services -> Repositories -> PostgreSQL
+                              |
+                              v
+                            Domain
 ```
 
-- Routes read requests and return HTTP responses.
-- Domain functions check the booking rules.
-- Database functions read and save data using parameterized SQL.
+- Routes define the URLs.
+- Controllers validate HTTP input and return responses.
+- Services coordinate each use case and choose the correct error.
+- Domain functions contain the booking and cancellation rules.
+- Repositories contain parameterized SQL and database transactions.
 
-Valkey will cache room schedules. If the cache is empty or unavailable, the API reads PostgreSQL.
+Dependencies are created in `app.ts` and passed through constructors. The services depend on small repository interfaces instead of PostgreSQL classes directly.
+
+The room schedule cache will be added with Valkey in step 6. PostgreSQL will remain the source of truth and the fallback when Valkey is unavailable.
 
 ## Business rules
 
-| Rule -----> Where and why |
-| ---------- |
-| Bookings last 1 to 4 hours and start on a full hour between 10:00 and 23:00 UTC. -----> The domain checks the dates before saving. |
-| Bookings for the same room cannot overlap. -----> The domain checks availability. PostgreSQL also blocks overlaps, including when two requests arrive together. One booking can start when another ends. |
-| A member can have at most two upcoming bookings. -----> The domain counts future confirmed bookings. We lock the member row while checking and saving in one transaction, so two requests cannot both pass the check. |
-| Cancellation keeps the booking. -----> The domain sets `late_cancelled` if less than 24 hours remain, otherwise `cancelled`. Exactly 24 hours is a normal cancellation. |
-| A booking cannot be cancelled twice. -----> The domain checks that its status is still `confirmed`. We lock the booking row while checking and updating it. |
-| A room cannot be booked during maintenance. -----> The domain checks whether the booking overlaps the room's maintenance dates. |
+| Rule | Implementation |
+| --- | --- |
+| A booking lasts 1 to 4 hours and starts on a full hour between 10:00 and 23:00 UTC. | `bookingRules.ts` validates the start and end dates before the service saves a booking. |
+| Confirmed bookings for one room cannot overlap. Consecutive bookings are allowed. | The domain checks availability for a clear 409 response. PostgreSQL also has an exclusion constraint, which protects concurrent requests. It uses a `[start, end)` range so a booking can start when another ends. |
+| A member can have at most two upcoming bookings. | Booking creation locks the member row, counts future confirmed bookings, and inserts in one transaction. The domain contains the limit and its error message. |
+| Cancellation keeps the booking. | `cancellationRules.ts` returns `late_cancelled` when less than 24 hours remain, otherwise `cancelled`. Exactly 24 hours is a normal cancellation. |
+| A booking cannot be cancelled twice. | Cancellation locks the booking row and only updates a booking whose status is `confirmed`. A second request returns 409. |
+| Maintenance blocks overlapping bookings. | `bookingRules.ts` compares the requested dates with the room maintenance dates before creation. Touching the start or end without overlap is allowed. |
 
-Cancelled bookings do not block rooms or count toward the two-booking limit.
-Functions that depend on time receive a clock as a parameter. This lets tests use a fixed time. All times are UTC.
+All time comparisons use UTC. Services receive a `Clock`, which allows tests to use a fixed date instead of the system clock.
 
-## Database model
+Controllers do not contain business rules. Known validation, missing-resource, and conflict errors are converted to 400, 404, and 409 responses by the central error handler. Unexpected errors return 500.
+
+## Relational model
 
 ```text
 rooms (1) ---- (many) bookings (many) ---- (1) members
@@ -41,18 +49,24 @@ bookings
   id, room_id, member_id, start_at, end_at, status
 ```
 
-Each table has `id` as its primary key. Each booking links to an existing room and member through foreign keys.
-IDs and names use `text`, capacity uses `integer`, and dates use `timestamptz`.
-The database checks that end dates come after start dates and that booking status is `confirmed`, `cancelled`, or `late_cancelled`.
-To prevent overlaps, we use `btree_gist` and an exclusion constraint on the room and booking time range, only for confirmed bookings. The range uses `[start, end)`: the start is included and the end is excluded, so consecutive bookings are allowed.
+Each table uses a text ID as its primary key. A booking has foreign keys to one room and one member. Dates use `timestamptz`.
 
-##  Use Express and pg
+The database checks that capacities are positive, maintenance dates are valid, booking end dates are after start dates, and statuses are `confirmed`, `cancelled`, or `late_cancelled`.
 
-We use Express for the routes and `pg` to run SQL queries.
-The project is small, so we do not need an ORM. Writing SQL ourselves makes the queries and database constraints easy to see, but we must write the migrations and map database rows to API responses ourselves.
+The migration enables `btree_gist`. A partial exclusion constraint combines room equality with the booking time range and applies only to confirmed bookings.
 
-## Use transactions and database constraints
+## ADR 1: Express and direct SQL
 
-Domain checks give useful errors, but two requests can pass the same check at the same time.
-We use a database constraint to prevent room overlaps and a member row lock to protect the two-booking limit.
-The lock, checks, and insert must use the same transaction and connection. If something fails, we roll back. An overlap conflict returns HTTP 409.
+**Decision:** Use Express for HTTP and `pg` for PostgreSQL without an ORM.
+
+**Reason:** The API is small. Parameterized SQL keeps queries, row locks, transactions, and PostgreSQL constraints visible and easy to explain.
+
+**Consequence:** Migrations and row mapping are written manually, but there is no extra ORM configuration or abstraction.
+
+## ADR 2: Domain checks and database protection
+
+**Decision:** Keep readable rules in the domain and use database transactions and constraints for concurrency.
+
+**Reason:** Two requests can pass the same availability or member-limit check at the same time. Domain checks alone cannot protect shared data.
+
+**Consequence:** Booking creation locks the member row, cancellation locks the booking row, and the exclusion constraint prevents room overlaps. A failed transaction is rolled back and returned as the correct HTTP error.

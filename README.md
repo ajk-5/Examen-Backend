@@ -42,5 +42,6 @@ The implemented route is:
 GET /rooms
 GET /rooms/:id/bookings?from=...&to=...
 POST /rooms/:id/bookings
+GET /bookings/:id
 ```
 

@@ -19,6 +19,16 @@ export class BookingService {
     private clock: Clock,
   ) {}
 
+  async getBooking(id: string): Promise<Booking> {
+    const booking = await this.bookingRepository.findById(id);
+
+    if (!booking) {
+      throw new NotFoundError("Booking not found");
+    }
+
+    return booking;
+  }
+
   async getRoomBookings(roomId: string, from: Date, to: Date): Promise<Booking[]> {
     if (from >= to) {
       throw new ValidationError("The start date must be before the end date");

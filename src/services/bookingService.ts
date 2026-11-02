@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { ScheduleCache } from "../cache/scheduleCache";
 import { Booking } from "../domain/booking";
 import {
   BookingConflictError,
@@ -19,6 +20,7 @@ export class BookingService {
     private roomRepository: RoomRepository,
     private bookingRepository: BookingRepository,
     private clock: Clock,
+    private scheduleCache: ScheduleCache,
   ) {}
 
   async getBooking(id: string): Promise<Booking> {
@@ -44,6 +46,8 @@ export class BookingService {
     if (result.type === "already_cancelled") {
       throw new BookingConflictError("The booking is already cancelled");
     }
+
+    await this.scheduleCache.invalidateRoom(result.booking.roomId);
   }
 
   async getRoomBookings(roomId: string, from: Date, to: Date): Promise<Booking[]> {
@@ -57,7 +61,16 @@ export class BookingService {
       throw new NotFoundError("Room not found");
     }
 
-    return this.bookingRepository.findByRoomAndPeriod(roomId, from, to);
+    const cached = await this.scheduleCache.get(roomId, from, to);
+
+    if (cached.bookings) {
+      return cached.bookings;
+    }
+
+    const bookings = await this.bookingRepository.findByRoomAndPeriod(roomId, from, to);
+    await this.scheduleCache.set(roomId, from, to, bookings, cached.version);
+
+    return bookings;
   }
 
   async createBooking(
@@ -92,6 +105,7 @@ export class BookingService {
     );
 
     if (result.type === "created") {
+      await this.scheduleCache.invalidateRoom(roomId);
       return result.booking;
     }
 

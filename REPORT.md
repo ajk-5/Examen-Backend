@@ -2,23 +2,19 @@
 
 ## Room schedule query
 
-I generated 100,000 bookings with `generate_series`, then measured the schedule for `room-1` from 1 March 2028 to 8 March 2028.
-
-The query returned 91 rows.
+Generated 100,000 bookings with `generate_series`, then measured the schedule for `room-1` from 1 March 2028 to 8 March 2028. The query returned 91 rows.
 
 ### Before the index
 
 ```text
-Sort  (actual time=4.383..4.386 rows=91 loops=1)
-  Sort Key: start_at
-  Sort Method: quicksort  Memory: 32kB
-  Buffers: shared hit=1136
-  ->  Seq Scan on bookings  (actual time=1.007..4.375 rows=91 loops=1)
-        Filter: start_at < '2028-03-08' AND end_at > '2028-03-01'
-                AND room_id = 'room-1' AND status = 'confirmed'
-        Rows Removed by Filter: 99913
-Planning Time: 0.269 ms
-Execution Time: 4.409 ms
+ Sort  (cost=3400.52..3411.46 rows=4373 width=51) (actual time=6.533..6.537 rows=91 loops=1)
+   Sort Key: start_at
+   Sort Method: quicksort  Memory: 32kB
+   Buffers: shared hit=1136
+   ->  Seq Scan on bookings  (cost=0.00..3136.08 rows=4373 width=51) (actual time=1.964..6.518 rows=91 loops=1)
+         Filter: ((start_at < '2028-03-08 00:00:00+00'::timestamp with time zone) AND (end_at > '2028-03-01 00:00:00+00'::timestamp with time zone) AND (room_id = 'room-1'::text) AND (status = 'confirmed'::text))
+         Rows Removed by Filter: 99913
+:
 ```
 
 PostgreSQL read the complete table and removed 99,913 rows.
@@ -34,44 +30,44 @@ WHERE status = 'confirmed';
 ### After the index
 
 ```text
-Sort  (actual time=0.628..0.631 rows=91 loops=1)
-  Sort Key: start_at
-  Sort Method: quicksort  Memory: 32kB
-  Buffers: shared hit=255 read=24
-  ->  Bitmap Heap Scan on bookings  (actual time=0.614..0.621 rows=91 loops=1)
-        Recheck Cond: room_id = 'room-1' AND start_at < '2028-03-08'
-                      AND status = 'confirmed'
-        Filter: end_at > '2028-03-01'
-        Rows Removed by Filter: 5526
-        ->  Bitmap Index Scan on bookings_room_start
-              (actual time=0.185..0.185 rows=5617 loops=1)
-Planning Time: 0.124 ms
-Execution Time: 0.643 ms
+Sort  (cost=21.21..21.32 rows=44 width=51) (actual time=0.102..0.103 rows=0 loops=1)
+   Sort Key: start_at
+   Sort Method: quicksort  Memory: 25kB
+   Buffers: shared hit=5 dirtied=1
+   ->  Bitmap Heap Scan on bookings  (cost=4.87..20.01 rows=44 width=51) (actual time=0.038..0.039 ro
+ws=0 loops=1)
+         Recheck Cond: ((room_id = 'room-1'::text) AND (status = 'confirmed'::text))
+         Filter: ((start_at < '2028-03-08 00:00:00+00'::timestamp with time zone) AND (end_at > '2028-03-01 00:00:00+00'::timestamp with time zone))
+         Rows Removed by Filter: 1
+         Heap Blocks: exact=1
+         Buffers: shared hit=2 dirtied=1
+         ->  Bitmap Index Scan on bookings_no_overlap  (cost=0.00..4.86 rows=257 width=0) (actual tim
+e=0.027..0.027 rows=1 loops=1)
+               Index Cond: (room_id = 'room-1'::text)
+               Buffers: shared hit=1
+ Planning:
+            Buffers: shared hit=136 dirtied=1
+            Planning Time: 0.590 ms
+            Execution Time: 0.792 ms
 ```
 
-PostgreSQL used the new index and read far fewer table pages. On this machine, the measured query was about 6.9 times faster. These times can change between runs, but the plan shows that the index is being used.
 
 ## PostgreSQL and Valkey
+PostgreSQL stores rooms, members, and bookings, ensuring data integrity, transactions, and backups.
 
-PostgreSQL stores rooms, members, and bookings. It is the source of truth because these records need foreign keys, transactions, overlap protection, backups, and reliable history.
-
-Valkey only stores room schedule responses. A key contains the room ID, the requested dates, and a version number:
+Valkey caches room schedules using the room ID, requested dates, and version number as the cache key
 
 ```text
 room-schedule:<roomId>:v<version>:<from>:<to>
 ```
 
-Schedule entries live for 60 seconds. This is long enough to avoid repeating popular queries but short enough to remove old unused entries quickly.
-
-Creating or cancelling a booking increments the room version. The next request therefore ignores old cached entries and reads the current schedule from PostgreSQL immediately.
-
-If Valkey is unavailable, cache reads return a miss and the API continues with PostgreSQL.
-
-Bookings could technically be stored as JSON in Valkey, but this would not fit this project. The association is small, and bookings need durable storage, relational checks, transactions, and backup. Valkey is more useful here for temporary derived data.
+Schedule cache entries expire after 60 seconds. Creating or cancelling a booking updates the room version, so the next request gets fresh data from PostgreSQL.
+If Valkey is unavailable, the API uses PostgreSQL directly.
+Bookings stay in PostgreSQL for reliable storage, transactions, and backups. Valkey is only used for temporary cached data.
 
 ## Backup and restore
 
-I created a custom-format PostgreSQL backup with `backup.sh` and restored it into a new database named `studio_riff_restore` with `restore.sh`.
+Created a custom-format PostgreSQL backup with `backup.sh` and restored it into a new database named `studio_riff_restore` with `restore.sh`.
 
 The row counts after restoration were:
 
@@ -84,8 +80,7 @@ The matching counts prove that the starting data was restored in the new databas
 
 ### Recovery objectives
 
-- **RPO: 24 hours.** One daily backup is acceptable for a small music association. In the worst case, the team may need to re-enter one day of bookings from messages or emails.
-- **RTO: 2 hours.** The database is small, and the tested restore takes only a few seconds. Two hours leaves time to replace a machine, start Docker, restore the backup, and check the API.
-- **Retention: 30 daily backups.** This gives one month to notice an error while keeping storage and maintenance simple.
+RPO: 24 hours. Daily backups are enough for a small association. At worst, one day of bookings may be lost.
 
-These values are less strict than a bank because Studio Riff has few rooms and members, and a short manual recovery is possible.
+RTO: 2 hours. Enough time to restart Docker, restore the database, and check the API.
+

@@ -15,7 +15,7 @@ Routes -> Controllers -> Services -> Repositories -> PostgreSQL
 - Domain files contain the business rules.
 - Repositories contain SQL queries and transactions.
 
-The classes are connected in app.ts. Services use repository interfaces, which also makes them easier to test.
+The classes are connected in app.ts and Services use repository interfaces, which also makes them easier to test.
 Valkey stores room schedule responses for 60 seconds. PostgreSQL stays the main database and is used if Valkey is unavailable.
 
 ## Business rules
@@ -53,9 +53,8 @@ The database checks capacities, date order, maintenance dates, and booking statu
 
 ## Decision 1: Express and pg
 
-We use Express for the API and pg for PostgreSQL. The project is small, so an ORM would add more code than needed. Direct SQL also makes the transactions and constraints easy to see.
+Express for the API and pg for PostgreSQL. As This is a small project an ORM would add more code than needed. Direct SQL also makes the trans.
 
 ## Decision 2: Domain checks and database protection
 
-The domain checks rules to return clear errors. PostgreSQL transactions and constraints protect the data when requests arrive together.
-Booking creation locks the member row. Cancellation locks the booking row. The exclusion constraint prevents room overlaps.
+Domain checks rules to return clear errors. PostgreSQL transactions and constraints protect the data when teh data requests arrive together. Booking creation locks the member row. Cancellation locks the booking row. The exclusion constraint prevents room overlaps.

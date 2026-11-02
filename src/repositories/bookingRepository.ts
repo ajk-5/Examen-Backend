@@ -21,6 +21,7 @@ export type CancelBookingResult =
 
 export interface BookingRepository {
   findById(id: string): Promise<Booking | null>;
+  findByMember(memberId: string): Promise<Booking[]>;
   findByRoomAndPeriod(roomId: string, from: Date, to: Date): Promise<Booking[]>;
   hasOverlap(roomId: string, start: Date, end: Date): Promise<boolean>;
   create(

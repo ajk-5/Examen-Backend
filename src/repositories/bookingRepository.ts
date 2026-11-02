@@ -15,6 +15,7 @@ export type CreateBookingResult =
   | { type: "room_overlap" };
 
 export interface BookingRepository {
+  findById(id: string): Promise<Booking | null>;
   findByRoomAndPeriod(roomId: string, from: Date, to: Date): Promise<Booking[]>;
   hasOverlap(roomId: string, start: Date, end: Date): Promise<boolean>;
   create(

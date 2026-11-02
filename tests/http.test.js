@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { createClient } = require("redis");
-const { app } = require("../dist/app");
+const { createApp } = require("../dist/app");
 const { pool } = require("../dist/db");
 
 const seedSql = fs.readFileSync(path.join(__dirname, "..", "seeds", "seed.sql"), "utf8");
@@ -11,6 +11,10 @@ const seedSql = fs.readFileSync(path.join(__dirname, "..", "seeds", "seed.sql"),
 let server;
 let baseUrl;
 let valkey;
+const fixedClock = {
+  now: () => new Date("2026-11-02T09:00:00Z"),
+};
+const app = createApp(fixedClock);
 
 before(async () => {
   valkey = createClient({ url: process.env.VALKEY_URL });

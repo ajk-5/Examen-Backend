@@ -8,6 +8,25 @@ import {
 } from "./bookingRepository";
 
 export class PostgresBookingRepository implements BookingRepository {
+  async findById(id: string): Promise<Booking | null> {
+    const result = await pool.query<Booking>(
+      `
+        SELECT
+          id,
+          room_id AS "roomId",
+          member_id AS "memberId",
+          start_at AS "start",
+          end_at AS "end",
+          status
+        FROM bookings
+        WHERE id = $1
+      `,
+      [id],
+    );
+
+    return result.rows[0] ?? null;
+  }
+
   async findByRoomAndPeriod(roomId: string, from: Date, to: Date): Promise<Booking[]> {
     const result = await pool.query<Booking>(
       `

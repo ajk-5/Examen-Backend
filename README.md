@@ -37,6 +37,14 @@ npm run build
 npm start
 ```
 
+## Tests
+
+Run the tests with:
+
+```powershell
+npm test
+```
+
 The implemented route is:
 ```text
 GET /rooms

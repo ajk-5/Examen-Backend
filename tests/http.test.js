@@ -2,6 +2,7 @@ const { after, before, beforeEach, test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const { createClient } = require("redis");
 const { app } = require("../dist/app");
 const { pool } = require("../dist/db");
 
@@ -9,8 +10,13 @@ const seedSql = fs.readFileSync(path.join(__dirname, "..", "seeds", "seed.sql"),
 
 let server;
 let baseUrl;
+let valkey;
 
 before(async () => {
+  valkey = createClient({ url: process.env.VALKEY_URL });
+  valkey.on("error", () => {});
+  await valkey.connect();
+
   await new Promise((resolve) => {
     server = app.listen(0, "127.0.0.1", resolve);
   });
@@ -21,10 +27,12 @@ before(async () => {
 
 beforeEach(async () => {
   await pool.query(seedSql);
+  await valkey.flushDb();
 });
 
 after(async () => {
   await new Promise((resolve) => server.close(resolve));
+  valkey.destroy();
   await pool.end();
 });
 
@@ -111,6 +119,48 @@ test("GET /members/:id/bookings returns member bookings", async () => {
 
   assert.equal(response.status, 200);
   assert.equal(bookings.length, 2);
+});
+
+test("room schedules are cached with a time limit", async () => {
+  await fetch(
+    `${baseUrl}/rooms/room-2/bookings?from=2026-11-02T00:00:00Z&to=2026-11-03T00:00:00Z`,
+  );
+
+  const keys = await valkey.keys("room-schedule:room-2:v0:*");
+  const ttl = await valkey.ttl(keys[0]);
+
+  assert.equal(keys.length, 1);
+  assert.ok(ttl > 0 && ttl <= 60);
+});
+
+test("creating a booking invalidates the room schedule", async () => {
+  const url = `${baseUrl}/rooms/room-1/bookings?from=2026-11-04T00:00:00Z&to=2026-11-05T00:00:00Z`;
+
+  await fetch(url);
+  await postBooking("room-1", {
+    memberId: "member-3",
+    start: "2026-11-04T14:00:00Z",
+    end: "2026-11-04T16:00:00Z",
+  });
+
+  const response = await fetch(url);
+  const bookings = await response.json();
+
+  assert.equal(await valkey.get("room-schedule:room-1:version"), "1");
+  assert.equal(bookings.length, 1);
+});
+
+test("cancelling a booking invalidates the room schedule", async () => {
+  const url = `${baseUrl}/rooms/room-1/bookings?from=2026-11-03T00:00:00Z&to=2026-11-04T00:00:00Z`;
+
+  await fetch(url);
+  await fetch(`${baseUrl}/bookings/booking-1`, { method: "DELETE" });
+
+  const response = await fetch(url);
+  const bookings = await response.json();
+
+  assert.equal(await valkey.get("room-schedule:room-1:version"), "1");
+  assert.equal(bookings.length, 0);
 });
 
 function postBooking(roomId, body) {

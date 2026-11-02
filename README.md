@@ -50,6 +50,20 @@ Run the tests with:
 npm test
 ```
 
+## Backup and restore
+
+Create a backup:
+
+```powershell
+bash backup.sh
+```
+
+Restore it into a separate database:
+
+```powershell
+bash restore.sh backups/studio_riff.dump studio_riff_restore
+```
+
 The implemented route is:
 ```text
 GET /rooms

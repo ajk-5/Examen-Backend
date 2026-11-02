@@ -38,6 +38,10 @@ npm run build
 npm start
 ```
 
+## Cache
+
+Room schedules are cached in Valkey for 60 seconds. Creating or cancelling a booking invalidates the room cache immediately. If Valkey is unavailable, the API reads from PostgreSQL.
+
 ## Tests
 
 Run the tests with:

@@ -17,4 +17,9 @@ export class PostgresRoomRepository implements RoomRepository {
 
     return result.rows;
   }
+
+  async exists(id: string): Promise<boolean> {
+    const result = await pool.query("SELECT 1 FROM rooms WHERE id = $1", [id]);
+    return result.rows.length > 0;
+  }
 }

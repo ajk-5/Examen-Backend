@@ -50,3 +50,21 @@ Execution Time: 0.643 ms
 ```
 
 PostgreSQL used the new index and read far fewer table pages. On this machine, the measured query was about 6.9 times faster. These times can change between runs, but the plan shows that the index is being used.
+
+## PostgreSQL and Valkey
+
+PostgreSQL stores rooms, members, and bookings. It is the source of truth because these records need foreign keys, transactions, overlap protection, backups, and reliable history.
+
+Valkey only stores room schedule responses. A key contains the room ID, the requested dates, and a version number:
+
+```text
+room-schedule:<roomId>:v<version>:<from>:<to>
+```
+
+Schedule entries live for 60 seconds. This is long enough to avoid repeating popular queries but short enough to remove old unused entries quickly.
+
+Creating or cancelling a booking increments the room version. The next request therefore ignores old cached entries and reads the current schedule from PostgreSQL immediately.
+
+If Valkey is unavailable, cache reads return a miss and the API continues with PostgreSQL.
+
+Bookings could technically be stored as JSON in Valkey, but this would not fit this project. The association is small, and bookings need durable storage, relational checks, transactions, and backup. Valkey is more useful here for temporary derived data.

@@ -50,6 +50,7 @@ e=0.027..0.027 rows=1 loops=1)
             Planning Time: 0.590 ms
             Execution Time: 0.792 ms
 ```
+The indexed DB was about 6 times faster than non indexed.
 
 
 ## PostgreSQL and Valkey
@@ -82,7 +83,7 @@ The matching counts prove that the starting data was restored in the new databas
 
 RPO: 24 hours. Daily backups are enough for a small association. At worst, one day of bookings may be lost.
 
-RTO: 2 hours. Enough time to restart Docker, restore the database, and check the API.
+RTO: 1 hours. Enough time to restart Docker, restore the database, and check the API.
 
 
 

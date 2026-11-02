@@ -6,6 +6,7 @@ export function createRoomRouter(roomController: RoomController): Router {
 
   router.get("/", roomController.getRooms);
   router.get("/:id/bookings", roomController.getBookings);
+  router.post("/:id/bookings", roomController.createBooking);
 
   return router;
 }

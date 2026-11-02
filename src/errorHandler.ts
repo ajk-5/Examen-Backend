@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response } from "express";
+import { BookingConflictError, InvalidBookingError } from "./domain/bookingRules";
 
 export class ValidationError extends Error {}
 
@@ -10,13 +11,18 @@ export function errorHandler(
   response: Response,
   _next: NextFunction,
 ): void {
-  if (error instanceof ValidationError) {
+  if (error instanceof ValidationError || error instanceof InvalidBookingError) {
     response.status(400).json({ error: error.message });
     return;
   }
 
   if (error instanceof NotFoundError) {
     response.status(404).json({ error: error.message });
+    return;
+  }
+
+  if (error instanceof BookingConflictError) {
+    response.status(409).json({ error: error.message });
     return;
   }
 

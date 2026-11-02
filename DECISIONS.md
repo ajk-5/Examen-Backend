@@ -5,8 +5,8 @@
 ```text
 Routes -> Controllers -> Services -> Repositories -> PostgreSQL
                               |
-                              v
-                            Domain
+                              +-> Domain
+                              +-> Schedule cache -> Valkey
 ```
 
 - Routes define the URLs.
@@ -16,7 +16,7 @@ Routes -> Controllers -> Services -> Repositories -> PostgreSQL
 - Repositories contain SQL queries and transactions.
 
 The classes are connected in app.ts. Services use repository interfaces, which also makes them easier to test.
-Valkey will be used later for the room schedule cache. PostgreSQL stays the main database and is used if Valkey is unavailable.
+Valkey stores room schedule responses for 60 seconds. PostgreSQL stays the main database and is used if Valkey is unavailable.
 
 ## Business rules
 
